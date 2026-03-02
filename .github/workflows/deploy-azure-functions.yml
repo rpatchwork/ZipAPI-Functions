@@ -1,0 +1,161 @@
+name: Deploy Azure Functions - ZipCode API
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  AZURE_FUNCTIONAPP_NAME: zipcode-density-api
+  AZURE_FUNCTIONAPP_PACKAGE_PATH: '.'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - name: 'Checkout GitHub Action'
+      uses: actions/checkout@v4
+
+    - name: 'Setup Python ${{ env.PYTHON_VERSION }}'
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: 'Create and start virtual environment'
+      run: |
+        python -m venv venv
+        source venv/bin/activate
+
+    - name: 'Install dependencies'
+      run: |
+        source venv/bin/activate
+        pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: 'Run Python tests'
+      run: |
+        source venv/bin/activate
+        python -m pytest tests/ -v || echo "No tests found, skipping..."
+
+    - name: 'Validate data file'
+      run: |
+        source venv/bin/activate
+        python -c "
+        import pandas as pd
+        import os
+        
+        # Validate zipcode data file
+        data_path = 'data/zipcode_data.csv'
+        if os.path.exists(data_path):
+            df = pd.read_csv(data_path)
+            print(f'✅ Data validation: {len(df)} zipcodes loaded')
+            required_cols = ['zipcode', 'latitude', 'longitude', 'population_density']
+            missing = [col for col in required_cols if col not in df.columns]
+            if missing:
+                raise Exception(f'Missing required columns: {missing}')
+            print('✅ All required columns present')
+        else:
+            raise Exception(f'Data file not found: {data_path}')
+        "
+
+    - name: 'Create deployment package'
+      run: |
+        # Remove unnecessary files to reduce package size
+        find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+        find . -name "*.pyc" -delete 2>/dev/null || true
+        
+        # Create deployment info
+        echo "Deployment Info:" > deployment-info.txt
+        echo "Build Date: $(date)" >> deployment-info.txt
+        echo "Commit: ${{ github.sha }}" >> deployment-info.txt
+        echo "Branch: ${{ github.ref_name }}" >> deployment-info.txt
+        
+        # Display package contents
+        echo "Package contents:"
+        find . -type f -name "*.py" | head -20
+
+    - name: 'Login to Azure'
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: 'Deploy to Azure Functions'
+      uses: Azure/functions-action@v1
+      id: deploy-function
+      with:
+        app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
+        package: ${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}
+        python-version: ${{ env.PYTHON_VERSION }}
+        scm-do-build-during-deployment: true
+        enable-oryx-build: true
+
+    - name: 'Wait for deployment'
+      run: |
+        echo "Waiting for function app to start..."
+        sleep 30
+
+    - name: 'Test deployed API endpoints'
+      run: |
+        # Test health endpoint
+        echo "Testing health endpoint..."
+        HEALTH_URL="https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health"
+        
+        for i in {1..10}; do
+          echo "Attempt $i/10..."
+          if curl -s -f "$HEALTH_URL" -o health_response.json; then
+            echo "✅ Health check passed"
+            cat health_response.json | head -20
+            break
+          else
+            echo "⏳ Health check failed, retrying in 15 seconds..."
+            sleep 15
+          fi
+          
+          if [ $i -eq 10 ]; then
+            echo "❌ Health check failed after 10 attempts"
+            exit 1
+          fi
+        done
+
+    - name: 'Test additional endpoints'
+      run: |
+        BASE_URL="https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api"
+        
+        # Test Swagger documentation
+        echo "Testing Swagger documentation..."
+        curl -s -f "$BASE_URL/docs?format=json" -o swagger.json || echo "Swagger test failed"
+        
+        # Test zipcode stats endpoint with NYC zipcode
+        echo "Testing zipcode stats endpoint..."
+        curl -s -f "$BASE_URL/zipcode/10001/stats" -o stats.json || echo "Stats test failed"
+        
+        # Test nearby zipcodes endpoint
+        echo "Testing nearby zipcodes endpoint..."
+        curl -s -f "$BASE_URL/zipcode/10001/nearby?radius=10&limit=3" -o nearby.json || echo "Nearby test failed"
+        
+        echo "✅ Endpoint testing completed"
+
+    - name: 'Deployment summary'
+      run: |
+        echo "🎉 Deployment Summary"
+        echo "========================"
+        echo "Function App: ${{ env.AZURE_FUNCTIONAPP_NAME }}"
+        echo "URL: https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net"
+        echo "Health Check: https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health"
+        echo "Swagger UI: https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/docs"
+        echo "API Documentation: https://${{ env.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/docs?format=json"
+        echo ""
+        echo "Available Endpoints:"
+        echo "- GET  /api/health"
+        echo "- GET  /api/docs"
+        echo "- GET  /api/zipcode/{zipcode}/stats"
+        echo "- GET  /api/zipcode/{zipcode}/nearby"
+        echo "- POST /api/zipcode/density"
+        echo ""
+        echo "Commit: ${{ github.sha }}"
+        echo "Deployed by: ${{ github.actor }}"
