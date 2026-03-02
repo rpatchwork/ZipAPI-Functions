@@ -1,7 +1,6 @@
 # Azure Functions for ZipCode Population Density Assessment
-grpcio==1.62.3
 azure-functions>=1.18.0
-azure-functions-worker>=1.1.9
+#azure-functions-worker>=1.1.9
 pandas>=2.1.0
 numpy>=1.24.0
 geopy>=2.3.0
