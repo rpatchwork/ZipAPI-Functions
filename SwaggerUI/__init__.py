@@ -402,7 +402,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
 </head>
 <body>
     <div class="download-container">
-        <a href="{window.location.origin + window.location.pathname}?format=json" 
+        <a href="#" 
            class="download-link" download="openapi.json">📥 Download OpenAPI JSON</a>
     </div>
     <div id="swagger-ui"></div>
