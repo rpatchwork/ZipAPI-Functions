@@ -42,7 +42,11 @@ jobs:
         python -m pip install --upgrade pip setuptools wheel
         rm -rf .python_packages
         python -m pip install -r requirements.txt --target=".python_packages/lib/site-packages"
-
+   
+    - name: 'Use vendored dependencies for subsequent steps'
+      run: |
+        echo "PYTHONPATH=${{ github.workspace }}/.python_packages/lib/site-packages" >> $GITHUB_ENV
+   
     - name: 'Verify vendored deps exist'
       run: |
         python -c "import sys; sys.path.insert(0, '.python_packages/lib/site-packages'); import pandas; print('pandas ok:', pandas.__version__)"
@@ -58,16 +62,17 @@ jobs:
     - name: 'Run Python tests'
       run: |
         source venv/bin/activate
+        python -m pip install --upgrade pytest
         python -m pytest tests/ -v || echo "No tests found, skipping..."
 
     - name: 'Validate data file'
       run: |
         source venv/bin/activate
         python -c "
+        import os, sys
+        sys.path.insert(0, '.python_packages/lib/site-packages')
         import pandas as pd
-        import os
-        
-        # Validate zipcode data file
+
         data_path = 'data/zipcode_data.csv'
         if os.path.exists(data_path):
             df = pd.read_csv(data_path)
