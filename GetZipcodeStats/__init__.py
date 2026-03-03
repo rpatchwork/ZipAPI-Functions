@@ -55,8 +55,8 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             'density_analysis': {
                 'density_score': density_score,
                 'national_percentile': national_percentile,
-                'classification': self._get_density_classification(density_score),
-                'description': self._get_density_description(population_density, national_percentile)
+                'classification': _get_density_classification(density_score),
+                'description': _get_density_description(population_density, national_percentile)
             },
             'national_context': {
                 'total_zipcodes_in_dataset': overall_stats['total_zipcodes'],
