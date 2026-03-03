@@ -22,7 +22,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         },
         "servers": [
             {
-                "url": "https://your-function-app.azurewebsites.net/api",
+                "url": "https://zipcode-density-api.azurewebsites.net/api",
                 "description": "Production server"
             },
             {
@@ -389,14 +389,34 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         html {{ box-sizing: border-box; overflow: -moz-scrollbars-vertical; overflow-y: scroll; }}
         *, *:before, *:after {{ box-sizing: inherit; }}
         body {{ margin:0; background: #fafafa; }}
+        .download-container {{ 
+            position: fixed; top: 10px; right: 10px; z-index: 1000; 
+            background: #fff; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }}
+        .download-link {{ 
+            background: #4CAF50; color: white; padding: 8px 16px; text-decoration: none; 
+            border-radius: 4px; font-size: 14px; font-weight: 500;
+        }}
+        .download-link:hover {{ background: #45a049; color: white; }}
     </style>
 </head>
 <body>
+    <div class="download-container">
+        <a href="{window.location.origin + window.location.pathname}?format=json" 
+           class="download-link" download="openapi.json">📥 Download OpenAPI JSON</a>
+    </div>
     <div id="swagger-ui"></div>
     <script src="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui-bundle.js"></script>
     <script src="https://unpkg.com/swagger-ui-dist@5.10.5/swagger-ui-standalone-preset.js"></script>
     <script>
     window.onload = function() {{
+        // Update download button href with current URL
+        const downloadBtn = document.querySelector('.download-link');
+        if (downloadBtn) {{
+            downloadBtn.href = window.location.origin + window.location.pathname + '?format=json';
+        }}
+        
+        // Initialize Swagger UI
         const ui = SwaggerUIBundle({{
             url: window.location.origin + window.location.pathname + '?format=json',
             dom_id: '#swagger-ui',
@@ -408,7 +428,14 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             plugins: [
                 SwaggerUIBundle.plugins.DownloadUrl
             ],
-            layout: "StandaloneLayout"
+            layout: "StandaloneLayout",
+            validatorUrl: null,  // Disable validator
+            displayRequestDuration: true,
+            tryItOutEnabled: true,
+            requestInterceptor: function(request) {{
+                // Add any custom headers if needed
+                return request;
+            }}
         }});
     }};
     </script>
